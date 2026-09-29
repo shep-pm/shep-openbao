@@ -31,14 +31,18 @@
 
 use std::{
     fs,
-    io::Write,
-    path::{Path, PathBuf},
-    process::{Child, Command, Output, Stdio},
+    path::PathBuf,
     sync::atomic::{AtomicU32, Ordering},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use serde_json::{Value, json};
+use serde_json::json;
+
+mod bao;
+mod shepherd;
+
+use bao::{Bao, Login};
+use shepherd::{DogProcess, Shepherd, app_script};
 
 /// This crate's own binary, as cargo built it for this run.
 const DOG_BIN: &str = env!("CARGO_BIN_EXE_shep-openbao");
@@ -55,16 +59,6 @@ fn required(key: &str, example: &str) -> String {
     })
 }
 
-fn shep_bin() -> PathBuf {
-    let path = PathBuf::from(required("SHEP_BIN", "../shep/target/debug/shep"));
-    assert!(
-        path.is_file(),
-        "$SHEP_BIN does not name a file: {}",
-        path.display()
-    );
-    path
-}
-
 /// A name no other test in this run, or in an earlier run against the same
 /// OpenBao, will pick.
 fn unique(label: &str) -> String {
@@ -78,244 +72,6 @@ fn unique(label: &str) -> String {
         std::process::id(),
         COUNTER.fetch_add(1, Ordering::Relaxed)
     )
-}
-
-/// OpenBao as its root token sees it, for setting up what the dog reads.
-struct Bao {
-    address: String,
-    token: String,
-    http: reqwest::Client,
-    runtime: tokio::runtime::Runtime,
-}
-
-/// What a test's AppRole logs in with.
-struct Login {
-    role_id: String,
-    secret_id: String,
-}
-
-impl Bao {
-    fn new() -> Self {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-        Self {
-            address: required("BAO_ADDR", "http://127.0.0.1:18200")
-                .trim_end_matches('/')
-                .to_string(),
-            token: std::env::var("BAO_TOKEN").unwrap_or_else(|_| "root".to_string()),
-            http: reqwest::Client::new(),
-            runtime: tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("a runtime"),
-        }
-    }
-
-    /// One call as root, answering the status and the JSON body (`null` for
-    /// an empty one).
-    fn call(&self, method: reqwest::Method, path: &str, body: Option<Value>) -> (u16, Value) {
-        let url = format!("{}/v1/{path}", self.address);
-        self.runtime.block_on(async {
-            let mut request = self
-                .http
-                .request(method, url)
-                .header("X-Vault-Token", &self.token);
-            if let Some(body) = body {
-                request = request
-                    .header("Content-Type", "application/json")
-                    .body(body.to_string());
-            }
-            let response = request.send().await.expect("OpenBao answered");
-            let status = response.status().as_u16();
-            let text = response.text().await.expect("a body");
-            let json = if text.is_empty() {
-                Value::Null
-            } else {
-                serde_json::from_str(&text).expect("a JSON body")
-            };
-            (status, json)
-        })
-    }
-
-    fn ok(&self, method: reqwest::Method, path: &str, body: Option<Value>) -> Value {
-        let (status, json) = self.call(method, path, body);
-        assert!(
-            (200..300).contains(&status),
-            "{path} answered {status}: {json}"
-        );
-        json
-    }
-
-    /// An AppRole that may read everything under `secret/<prefix>/`, and
-    /// nothing else.
-    fn approle(&self, prefix: &str) -> Login {
-        // 400 once it is enabled, which a second test in the same run finds.
-        let _ = self.call(
-            reqwest::Method::POST,
-            "sys/auth/approle",
-            Some(json!({"type": "approle"})),
-        );
-        let policy = format!("path \"secret/data/{prefix}/*\" {{ capabilities = [\"read\"] }}");
-        self.ok(
-            reqwest::Method::PUT,
-            &format!("sys/policies/acl/{prefix}"),
-            Some(json!({ "policy": policy })),
-        );
-        self.ok(
-            reqwest::Method::POST,
-            &format!("auth/approle/role/{prefix}"),
-            Some(json!({"token_policies": [prefix], "token_ttl": "1h", "secret_id_num_uses": 0})),
-        );
-        let role = self.ok(
-            reqwest::Method::GET,
-            &format!("auth/approle/role/{prefix}/role-id"),
-            None,
-        );
-        let secret = self.ok(
-            reqwest::Method::POST,
-            &format!("auth/approle/role/{prefix}/secret-id"),
-            None,
-        );
-        Login {
-            role_id: role["data"]["role_id"]
-                .as_str()
-                .expect("a role ID")
-                .to_string(),
-            secret_id: secret["data"]["secret_id"]
-                .as_str()
-                .expect("a secret ID")
-                .to_string(),
-        }
-    }
-
-    /// Writes a new version of `secret/<path>` holding exactly `data`.
-    fn put(&self, path: &str, data: Value) {
-        self.ok(
-            reqwest::Method::POST,
-            &format!("secret/data/{path}"),
-            Some(json!({ "data": data })),
-        );
-    }
-}
-
-/// One shepherd in its own temporary `$SHEP_HOME`, killed on drop.
-struct Shepherd {
-    home: tempfile::TempDir,
-    shep: PathBuf,
-}
-
-impl Shepherd {
-    fn new() -> Self {
-        // Under /tmp rather than $TMPDIR: a unix socket path is bounded at
-        // about 104 bytes, and $TMPDIR on macOS alone eats half of that.
-        let home = tempfile::Builder::new()
-            .prefix("sob")
-            .tempdir_in("/tmp")
-            .expect("a temporary $SHEP_HOME");
-        Self {
-            home,
-            shep: shep_bin(),
-        }
-    }
-
-    fn home(&self) -> &Path {
-        self.home.path()
-    }
-
-    /// Run one `shep` command against this home, from inside it so no
-    /// Flockfile in the caller's directory is picked up.
-    fn run(&self, args: &[&str]) -> Output {
-        Command::new(&self.shep)
-            .args(args)
-            .arg("--home")
-            .arg(self.home())
-            .env("SHEP_HOME", self.home())
-            .env_remove("SHEP_DOG_NAME")
-            .current_dir(self.home())
-            .output()
-            .expect("shep ran")
-    }
-
-    fn ok(&self, args: &[&str]) -> String {
-        let output = self.run(args);
-        assert!(
-            output.status.success(),
-            "shep {args:?} failed: {}\n{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        String::from_utf8_lossy(&output.stdout).into_owned()
-    }
-
-    fn write_dogs_toml(&self, body: &str) {
-        fs::write(self.home().join("dogs.toml"), body).expect("dogs.toml");
-    }
-
-    /// Start this dog as a plain child, the way an operator running it by
-    /// hand would, with its output captured. With no `$SHEP_DOG_NAME` it
-    /// reads `[openbao]` and pushes under `openbao`.
-    fn spawn_dog(&self) -> DogProcess {
-        let out = fs::File::create(self.home().join("dog.out")).expect("dog.out");
-        let err = fs::File::create(self.home().join("dog.err")).expect("dog.err");
-        let child = Command::new(DOG_BIN)
-            .env("SHEP_HOME", self.home())
-            .env_remove("SHEP_DOG_NAME")
-            .stdout(Stdio::from(out))
-            .stderr(Stdio::from(err))
-            .spawn()
-            .expect("the dog started");
-        DogProcess(child)
-    }
-
-    fn dog_stdout(&self) -> String {
-        fs::read_to_string(self.home().join("dog.out")).unwrap_or_default()
-    }
-
-    fn dog_output(&self) -> String {
-        let err = fs::read_to_string(self.home().join("dog.err")).unwrap_or_default();
-        format!("{}{err}", self.dog_stdout())
-    }
-
-    /// Waits until the dog's stdout has said `line` at least `times` times.
-    fn wait_for_dog(&self, line: &str, times: usize) {
-        wait_until(
-            &format!("the dog to say {line:?} {times} time(s)"),
-            || self.dog_stdout().lines().filter(|l| *l == line).count() >= times,
-            || self.dog_output(),
-        );
-    }
-}
-
-impl Drop for Shepherd {
-    fn drop(&mut self) {
-        let _ = self.run(&["kill", "--style", "bare"]);
-    }
-}
-
-/// A dog running as a plain child, killed on drop.
-struct DogProcess(Child);
-
-impl Drop for DogProcess {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
-
-/// A sheep that writes `$DB_URL` to `out`, atomically, then waits to be
-/// stopped. Each start rewrites it, so a restart is visible as new content.
-fn app_script(dir: &Path, out: &Path) -> PathBuf {
-    let path = dir.join("app.sh");
-    let mut file = fs::File::create(&path).expect("script");
-    write!(
-        file,
-        "#!/bin/sh\nprintf '%s' \"$DB_URL\" > {out}.tmp && mv {out}.tmp {out}\nexec sleep 300\n",
-        out = out.display()
-    )
-    .expect("script body");
-    drop(file);
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("chmod");
-    path
 }
 
 /// Poll `ready` until it answers true, or fail with `what` and whatever
