@@ -145,22 +145,26 @@ impl<S: Shepherd> Mirror<S> {
             self.dirty
                 .extend(environments.iter().map(|(name, _)| name.clone()));
         }
+        // Before anything that needs OpenBao: emptying an environment that
+        // left the config needs only the shepherd.
+        let mut outcomes = self.empty_removed().await;
         if environments.is_empty() {
-            return Vec::new();
+            return outcomes;
         }
         // One login per round rather than one per environment, so a
         // server that refuses it is asked once, not once per environment.
         if let Err(err) = self.ensure_token().await {
             let reason = chain(&err);
-            return environments
-                .into_iter()
-                .map(|(environment, _)| Outcome::Skipped {
-                    environment,
-                    reasons: vec![reason.clone()],
-                })
-                .collect();
+            outcomes.extend(
+                environments
+                    .into_iter()
+                    .map(|(environment, _)| Outcome::Skipped {
+                        environment,
+                        reasons: vec![reason.clone()],
+                    }),
+            );
+            return outcomes;
         }
-        let mut outcomes = Vec::with_capacity(environments.len());
         for (name, environment) in environments {
             outcomes.push(self.environment(name, &environment).await);
         }
@@ -189,28 +193,36 @@ impl<S: Shepherd> Mirror<S> {
         if config.role_id != self.config.role_id || config.secret_id != self.config.secret_id {
             self.token = None;
         }
+        self.config = config;
+        Ok(self.empty_removed().await)
+    }
+
+    /// Pushes an empty set for every environment this run pushed that has
+    /// since left the config. One whose empty push fails stays in `pushed`,
+    /// so every round tries it again until it lands: the shepherd would
+    /// otherwise keep serving its old values indefinitely.
+    async fn empty_removed(&mut self) -> Vec<Outcome> {
         let gone: Vec<String> = self
             .pushed
             .keys()
-            .filter(|name| !config.environments.contains_key(*name))
+            .filter(|name| !self.config.environments.contains_key(*name))
             .cloned()
             .collect();
-        self.config = config;
         let mut outcomes = Vec::with_capacity(gone.len());
         for environment in gone {
             match self.shepherd.push(&environment, &Set::new()).await {
                 Ok(_) => {
                     self.pushed.remove(&environment);
+                    self.dirty.remove(&environment);
                     outcomes.push(Outcome::Emptied { environment });
                 }
-                // Kept in `pushed`, so the next reconfigure tries again.
                 Err(err) => outcomes.push(Outcome::Refused {
                     environment,
                     error: err.to_string(),
                 }),
             }
         }
-        Ok(outcomes)
+        outcomes
     }
 
     async fn environment(&mut self, name: String, environment: &Environment) -> Outcome {

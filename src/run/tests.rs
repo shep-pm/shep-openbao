@@ -359,6 +359,43 @@ async fn an_environment_that_leaves_the_config_is_emptied_once() {
 }
 
 #[tokio::test]
+async fn an_empty_push_the_shepherd_refused_is_tried_every_round_until_it_lands() {
+    let (fake, recorder, mut mirror) =
+        setup(&[("production", &["app"]), ("staging", &["app"])]).await;
+    fake.kv("secret", "app", r#"{"A": "1"}"#);
+    mirror.round(false).await;
+
+    recorder.refuse.set(true);
+    let refused = mirror
+        .reconfigure(config(&fake, &[("production", &["app"])]))
+        .await
+        .expect("reconfigures");
+    assert!(matches!(refused[0], Outcome::Refused { .. }), "{refused:?}");
+
+    recorder.refuse.set(false);
+    let next = mirror.round(false).await;
+    assert_eq!(
+        next,
+        [
+            Outcome::Emptied {
+                environment: "staging".to_string()
+            },
+            Outcome::Unchanged {
+                environment: "production".to_string()
+            },
+        ]
+    );
+    assert_eq!(recorder.last(), ("staging".to_string(), Vec::new()));
+    let settled = mirror.round(false).await;
+    assert_eq!(
+        settled,
+        [Outcome::Unchanged {
+            environment: "production".to_string()
+        }]
+    );
+}
+
+#[tokio::test]
 async fn new_login_fields_log_in_again_and_new_paths_push_next_round() {
     let (fake, recorder, mut mirror) = setup(&[("production", &["app"])]).await;
     fake.kv("secret", "app", r#"{"A": "1"}"#);
