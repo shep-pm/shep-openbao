@@ -1,6 +1,9 @@
 //! A provider dog for shep: mirrors secrets from OpenBao into shep's secrets store.
 
+mod bao;
 mod config;
+#[cfg(test)]
+mod fake_bao;
 mod secret;
 
 fn main() {
