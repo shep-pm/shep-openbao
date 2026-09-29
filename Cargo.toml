@@ -12,6 +12,27 @@ readme = "README.md"
 publish = false
 
 [dependencies]
+# The only path to shep-core: `shep_client::shep_core`, never a second direct
+# dependency. 0.11.0 is the floor because it is the release carrying the
+# shared dog infrastructure (Stop, DogRuntime, the startup prelude and the
+# exit codes); `PutSecrets` itself has been there since 0.6.2.
+shep-client = "0.11.0"
+# `#[derive(JsonSchema)]` expands to absolute `schemars::` paths, so the crate
+# has to be nameable here even though shep-client carries it.
+schemars = { version = "1.2.2", default-features = false, features = ["derive", "std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", default-features = false, features = ["std"] }
+tokio = { version = "1", default-features = false, features = ["rt", "macros", "time", "signal", "sync"] }
+# rustls with ring rather than reqwest's default aws-lc-rs: the smaller C
+# build, and the provider shep's own workspace already uses through
+# tokio-rustls. `rustls-no-provider` keeps aws-lc-rs out of the tree, which
+# is why `rustls` is named here at all: something has to supply the provider.
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+
+[dev-dependencies]
+shep-client = { version = "0.11.0", features = ["test-support"] }
+tokio = { version = "1", default-features = false, features = ["rt", "macros", "time", "net", "io-util", "sync"] }
 
 [lints.rust]
 missing_docs = "deny"
