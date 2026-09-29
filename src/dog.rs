@@ -61,7 +61,16 @@ pub async fn run(
                 if interrupted == Interrupted::Yes {
                     return ExitCode::SUCCESS;
                 }
-                log(&mirror.round(force).await);
+                // A round can wait on OpenBao for a whole request timeout
+                // per path, so a stop is heard during it, not after.
+                // Dropping it midway is safe: nothing is recorded as pushed
+                // until the shepherd has answered.
+                let outcomes = tokio::select! {
+                    biased;
+                    () = stop.wait() => return ExitCode::SUCCESS,
+                    outcomes = mirror.round(force) => outcomes,
+                };
+                log(&outcomes);
                 force = false;
                 next = Instant::now() + mirror.config().interval;
             }
@@ -78,7 +87,16 @@ pub async fn run(
                     next = Instant::now();
                 }
                 None => {
-                    events = match resubscribe(client, &topics).await {
+                    // A stop during the wait is a stop, not a lost
+                    // shepherd: a shepherd shutting down closes the socket
+                    // and signals its dogs at about the same moment, and
+                    // exiting on the budget would report a failure.
+                    let resubscribed = tokio::select! {
+                        biased;
+                        () = stop.wait() => return ExitCode::SUCCESS,
+                        resubscribed = resubscribe(client, &topics) => resubscribed,
+                    };
+                    events = match resubscribed {
                         Ok(events) => events,
                         Err(err) => {
                             eprintln!("shep-openbao: {err}");

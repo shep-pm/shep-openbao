@@ -117,6 +117,31 @@ impl Drop for Shepherd {
 /// A dog running as a plain child, killed on drop.
 pub struct DogProcess(Child);
 
+impl DogProcess {
+    /// Sends SIGTERM, what a shepherd stopping its dogs sends first.
+    pub fn terminate(&self) {
+        let status = Command::new("kill")
+            .args(["-TERM", &self.0.id().to_string()])
+            .status()
+            .expect("kill ran");
+        assert!(status.success(), "kill -TERM failed");
+    }
+
+    /// Waits up to `budget` for the dog to exit on its own, and answers how
+    /// it exited. Polled, so a dog that never stops fails with a sentence
+    /// rather than hanging the tier.
+    pub fn exit_within(&mut self, budget: std::time::Duration) -> std::process::ExitStatus {
+        let deadline = std::time::Instant::now() + budget;
+        while std::time::Instant::now() < deadline {
+            if let Some(status) = self.0.try_wait().expect("the dog's exit status") {
+                return status;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        panic!("the dog is still running {budget:?} after it was asked to stop");
+    }
+}
+
 impl Drop for DogProcess {
     fn drop(&mut self) {
         let _ = self.0.kill();

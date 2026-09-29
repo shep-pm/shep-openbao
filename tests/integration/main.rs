@@ -289,3 +289,23 @@ fn an_adopted_dog_pushes_under_the_name_it_was_adopted_as() {
     world.start_app("vault");
     world.wait_for_app("postgres://adopted");
 }
+
+#[test]
+fn a_stop_while_the_shepherd_is_gone_is_a_clean_exit() {
+    let world = World::new("postgres://any");
+    let mut dog = boot(&world, "");
+
+    // The dog's event stream ends and it starts waiting, up to five
+    // seconds, for a shepherd to come back. A second in, it is inside that
+    // wait when the stop arrives.
+    world.shepherd.ok(&["kill", "--style", "bare"]);
+    std::thread::sleep(Duration::from_secs(1));
+    dog.terminate();
+
+    let status = dog.exit_within(Duration::from_secs(3));
+    assert!(
+        status.success(),
+        "a stop is not a lost shepherd: {status:?}\n{}",
+        world.shepherd.dog_output()
+    );
+}
