@@ -34,23 +34,41 @@ pub enum Problem {
     TooLarge { key: String, path: String },
 }
 
+/// Keys come from whoever can write to the KV path, and every problem ends
+/// up on a log line, so a key holding a newline could forge one. Escaped the
+/// way `{:?}` escapes a string, without the quotes. Paths are the operator's
+/// own config, but go through the same escape so no field is the exception.
+fn clean(text: &str) -> impl fmt::Display + '_ {
+    text.escape_debug()
+}
+
 impl fmt::Display for Problem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Collision { key, first, second } => {
-                write!(f, "key `{key}` is at both {first} and {second}")
-            }
+            Self::Collision { key, first, second } => write!(
+                f,
+                "key `{}` is at both {} and {}",
+                clean(key),
+                clean(first),
+                clean(second)
+            ),
             Self::BadName { key, path } => write!(
                 f,
-                "key `{key}` at {path} is not a name shep accepts: use letters, digits, `.`, `_` and `-`, not starting with `.`"
+                "key `{}` at {} is not a name shep accepts: use letters, digits, `.`, `_` and `-`, not starting with `.`",
+                clean(key),
+                clean(path)
             ),
             Self::Unsupported { key, path } => write!(
                 f,
-                "key `{key}` at {path} is null, a list or a table, not a string, number or boolean"
+                "key `{}` at {} is null, a list or a table, not a string, number or boolean",
+                clean(key),
+                clean(path)
             ),
             Self::TooLarge { key, path } => write!(
                 f,
-                "key `{key}` at {path} is over shep's {MAX_VALUE_BYTES} byte limit"
+                "key `{}` at {} is over shep's {MAX_VALUE_BYTES} byte limit",
+                clean(key),
+                clean(path)
             ),
         }
     }
@@ -202,6 +220,21 @@ mod tests {
         )])
         .expect("at the limit is fine");
         assert_eq!(set["BIG"].expose().len(), MAX_VALUE_BYTES);
+    }
+
+    #[test]
+    fn a_key_cannot_forge_a_log_line() {
+        let problems = build(vec![read(
+            "secret/app",
+            &[("A\nproduction: pushed 1 secret: X", text("a"))],
+        )])
+        .expect_err("a bad name");
+        let line = problems[0].to_string();
+        assert!(!line.contains('\n'), "{line}");
+        assert!(
+            line.starts_with("key `A\\nproduction: pushed 1 secret: X` at secret/app"),
+            "{line}"
+        );
     }
 
     #[test]
