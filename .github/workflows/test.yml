@@ -50,3 +50,46 @@ jobs:
       # Matches `rust-version` in Cargo.toml.
       - run: rustup toolchain install 1.88 --profile minimal
       - run: cargo +1.88 check --all-targets --all-features --locked
+
+  integration:
+    # The tier that drives a real shepherd and a real OpenBao, and the only
+    # job that tests what this dog is for: a sheep reading a value back out
+    # of its own environment. Feature-gated off by default because a fresh
+    # clone has neither; here we fetch both.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BAO_VERSION: 2.7.0
+      BAO_ADDR: http://127.0.0.1:18200
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install stable --profile minimal
+      # From shep's `main` rather than the release this crate's lockfile
+      # pins, deliberately: the point of an external dog's integration tier
+      # is to notice shep's surface moving under it. `--debug` because the
+      # tier needs a working shepherd, not a fast one, and a release build
+      # with shep's LTO settings takes several times as long. The bare `shep`
+      # is the package spec, which `cargo install --git` needs now that
+      # shep's workspace has more than one package with a binary.
+      - name: Build a real shep
+        run: cargo install --debug --git https://github.com/shep-pm/shep --branch main shep --bin shep --locked
+      # The release binary rather than a container: it runs the same way on
+      # a laptop with no Docker, and the checksum is checked against the
+      # release's own list before anything runs.
+      - name: Start an OpenBao dev server
+        run: |
+          base="https://github.com/openbao/openbao/releases/download/v${BAO_VERSION}"
+          tarball="openbao_${BAO_VERSION}_linux_amd64.tar.gz"
+          curl -fsSLO "$base/$tarball"
+          curl -fsSLO "$base/checksums.txt"
+          grep " ${tarball}\$" checksums.txt | sha256sum -c -
+          tar -xzf "$tarball" bao
+          ./bao server -dev -dev-root-token-id=root -dev-listen-address=127.0.0.1:18200 > bao.log 2>&1 &
+          for _ in $(seq 1 50); do
+            curl -fs "$BAO_ADDR/v1/sys/health" > /dev/null && exit 0
+            sleep 0.2
+          done
+          cat bao.log
+          exit 1
+      - name: Run the integration tier against them
+        run: SHEP_BIN="$(command -v shep)" cargo test --features integration --locked --test integration
