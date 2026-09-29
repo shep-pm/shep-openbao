@@ -4,6 +4,7 @@ mod bao;
 mod config;
 #[cfg(test)]
 mod fake_bao;
+mod mirror;
 mod secret;
 
 fn main() {
