@@ -6,6 +6,7 @@
 //! connection. `Connection: close` on every answer keeps it to one request
 //! per connection, so there is no keep-alive to parse.
 
+use core::fmt;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex, PoisonError},
@@ -18,7 +19,11 @@ use tokio::{
 };
 
 /// One request as the fake received it. Header names are lowercased.
-#[derive(Debug, Clone)]
+///
+/// `Debug` is written by hand, like every type here that can hold a token or
+/// a value: it prints header names and the body's length, never their
+/// contents, so a failing assertion that formats one cannot print a secret.
+#[derive(Clone)]
 pub struct Seen {
     pub method: String,
     pub path: String,
@@ -29,11 +34,36 @@ pub struct Seen {
 type Routes = HashMap<(String, String), (u16, String)>;
 
 /// A running fake. The listening task stops when the test's runtime does.
-#[derive(Debug)]
+///
+/// `Debug` prints the address and how many routes and requests it holds:
+/// a scripted answer is a body that can carry a token or a value.
 pub struct FakeBao {
     address: Url,
     routes: Arc<Mutex<Routes>>,
     seen: Arc<Mutex<Vec<Seen>>>,
+}
+
+impl fmt::Debug for Seen {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut headers: Vec<&str> = self.headers.keys().map(String::as_str).collect();
+        headers.sort_unstable();
+        f.debug_struct("Seen")
+            .field("method", &self.method)
+            .field("path", &self.path)
+            .field("headers", &headers)
+            .field("body_bytes", &self.body.len())
+            .finish()
+    }
+}
+
+impl fmt::Debug for FakeBao {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FakeBao")
+            .field("address", &self.address.as_str())
+            .field("routes", &lock(&self.routes).len())
+            .field("seen", &lock(&self.seen).len())
+            .finish()
+    }
 }
 
 impl FakeBao {

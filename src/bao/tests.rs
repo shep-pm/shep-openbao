@@ -61,6 +61,26 @@ async fn a_read_sends_the_token_and_namespace_and_decodes_the_values() {
 }
 
 #[tokio::test]
+async fn the_fakes_debug_never_prints_a_token_or_a_body() {
+    let fake = FakeBao::start().await;
+    let bao = client(&fake, None);
+    let token = logged_in(&fake, &bao).await;
+    fake.kv("secret", "app", r#"{"A": "postgres://db"}"#);
+    bao.read(&token, "secret", "app").await.expect("reads");
+
+    let printed = format!("{fake:?} {:?}", fake.seen());
+    for secret in ["s.token", "hunter2", "postgres://db"] {
+        assert!(!printed.contains(secret), "{secret} in {printed}");
+    }
+    let read = fake.seen().pop().expect("a read");
+    assert!(
+        format!("{read:?}")
+            .starts_with("Seen { method: \"GET\", path: \"/v1/secret/data/app\", headers: ["),
+        "{read:?}"
+    );
+}
+
+#[tokio::test]
 async fn no_namespace_header_goes_out_without_a_namespace() {
     let fake = FakeBao::start().await;
     let bao = client(&fake, None);
