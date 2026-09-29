@@ -210,6 +210,17 @@ fn a_token_is_due_two_thirds_through_its_lifetime_and_never_without_one() {
 }
 
 #[test]
+fn a_lifetime_too_large_to_double_does_not_panic() {
+    let issued = Instant::now();
+    let token = Token {
+        value: secret("s.token"),
+        lifetime: Some(Duration::from_secs(u64::MAX)),
+        issued,
+    };
+    assert!(!token.due(issued + Duration::from_secs(3600)));
+}
+
+#[test]
 fn a_missing_or_empty_ca_cert_is_refused_by_path() {
     let url = Url::parse("https://openbao.example.com").expect("a URL");
     let dir = std::env::temp_dir().join(format!("shep-openbao-ca-{}", std::process::id()));

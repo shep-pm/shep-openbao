@@ -57,7 +57,9 @@ impl Token {
     #[must_use]
     pub fn due(&self, now: Instant) -> bool {
         self.lifetime
-            .is_some_and(|lifetime| now.saturating_duration_since(self.issued) >= lifetime * 2 / 3)
+            // Divided before multiplied: `lifetime * 2` panics on overflow,
+            // and `lease_duration` is whatever number OpenBao sent.
+            .is_some_and(|lifetime| now.saturating_duration_since(self.issued) >= lifetime / 3 * 2)
     }
 }
 
