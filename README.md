@@ -77,7 +77,7 @@ Config changes apply without restarting the dog. A change that does not parse is
 - A value changed in OpenBao reaches a running sheep at its next restart. The dog pushes it within `interval`, but a running process's environment cannot change.
 - Nothing a round finds wrong changes what the shepherd holds. A path that fails to read, a key found at two paths, or a key shep would refuse as a name keeps the last push for that environment, and the log names the path or key, never a value.
 - Pushed values are cached in `$SHEP_HOME/secrets-cache.json` (mode `0600`), so a reboot does not wait on OpenBao. `persist = false` keeps them in memory only.
-- An environment removed from `[openbao]` while the dog runs gets an empty push. Removed while the dog is down, its values stay in `secrets-cache.json` until that file is deleted.
+- An environment removed from `[openbao]` gets an empty push if this run of the dog pushed it. After a dog restart it cannot know the environment was ever there, so the shepherd keeps its values: in `secrets-cache.json` until that file is deleted, or with `persist = false` until the shepherd stops.
 - Only KV v2, and only strings, integers and booleans. A `null`, a list, a table or a number with a fraction or exponent refuses its environment's push, since a float would not come out as the text OpenBao stored. Store such a value as a string.
 
 ## License
