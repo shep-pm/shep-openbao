@@ -45,6 +45,12 @@ pub(super) struct ReadResponse {
 struct ReadData {
     /// `None` when the latest version holds nothing, which OpenBao writes as
     /// `null` rather than as an empty object.
+    ///
+    /// Required all the same: `deserialize_with` stops serde treating a
+    /// missing `Option` field as `None`. A 200 with no `data.data` at all is
+    /// not a KV v2 answer, and reading it as an empty set would push one,
+    /// deleting every secret the environment held.
+    #[serde(deserialize_with = "Option::deserialize")]
     data: Option<BTreeMap<String, Raw>>,
 }
 
@@ -114,6 +120,16 @@ mod tests {
     #[test]
     fn a_null_version_is_an_empty_set() {
         assert!(values(r#"{"data": {"data": null, "metadata": {}}}"#).is_empty());
+    }
+
+    #[test]
+    fn an_answer_with_no_data_at_all_is_refused_not_read_as_empty() {
+        for body in [r#"{"data": {"metadata": {}}}"#, r#"{"data": {}}"#, r#"{}"#] {
+            assert!(
+                serde_json::from_str::<ReadResponse>(body).is_err(),
+                "{body} should be refused"
+            );
+        }
     }
 
     /// serde's own message quotes the value it choked on. This is the reason
