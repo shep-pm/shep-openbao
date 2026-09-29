@@ -11,10 +11,7 @@
 
 use std::process::{Command, Output};
 
-use shep_client::shep_core::{
-    dogs::parse_version_answer,
-    protocol::{MIN_SUPPORTED, PROTOCOL_VERSION},
-};
+use shep_client::shep_core::{dogs::parse_version_answer, protocol::PROTOCOL_VERSION};
 
 /// The binary under test, as cargo built it for this run.
 const DOG_BIN: &str = env!("CARGO_BIN_EXE_shep-openbao");
@@ -64,16 +61,17 @@ fn the_version_answer_is_one_the_shepherds_own_parser_reads() {
 fn the_protocol_this_dog_announces_is_one_a_shepherd_still_accepts() {
     let parsed = parse_version_answer(&stdout(&probe("--version"))).expect("a readable answer");
     let announced = parsed.protocol.expect("a protocol line");
-    // A literal, because both constants come from the one shep-core this
-    // crate links and would move together. Failing here is the prompt to
-    // run the integration tier against a shepherd from the new release
-    // before moving the number.
+    // A literal, because `announced` is `PROTOCOL_VERSION` from the one
+    // shep-core this crate links, so any comparison between two of its
+    // constants moves with them and cannot fail; shep-core already pins
+    // `MIN_SUPPORTED <= PROTOCOL_VERSION` itself. Failing here is the
+    // prompt to run the integration tier against a shepherd from the new
+    // release before moving the number.
     assert_eq!(
         announced, 10,
         "this dog announces protocol {announced}, and was last verified against a shepherd \
          speaking 10. Run the integration tier against the new shep before moving this."
     );
-    assert!(announced >= MIN_SUPPORTED);
 }
 
 #[test]
