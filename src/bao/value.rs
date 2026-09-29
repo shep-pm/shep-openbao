@@ -14,11 +14,14 @@ use crate::secret::Secret;
 /// One value at a KV path, as this dog can hand it to shep.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KvValue {
-    /// A string, number or boolean, as the text a sheep's environment gets.
-    /// A number keeps the digits OpenBao stored, and a boolean is `true` or
-    /// `false`, the way shep's own `env` coerces them.
+    /// A string, integer or boolean, as the text a sheep's environment gets.
+    /// An integer is exact and a boolean is `true` or `false`, the way shep's
+    /// own `env` coerces them.
     Text(Secret),
-    /// `null`, an array or an object, which have no single environment form.
+    /// `null`, an array, an object, or a number with a fraction or exponent.
+    /// A fractional number is refused rather than rewritten: serde reads it
+    /// as a float, so `1.50` would come out as `1.5` and `1e3` as `1000.0`,
+    /// and a secret silently changed is worse than one refused.
     Unsupported,
 }
 
@@ -77,7 +80,10 @@ impl ReadResponse {
                 let value = match raw {
                     Raw::Text(text) => KvValue::Text(text),
                     Raw::Bool(flag) => KvValue::Text(Secret::new(flag.to_string())),
-                    Raw::Number(number) => KvValue::Text(Secret::new(number.to_string())),
+                    Raw::Number(number) if number.is_i64() || number.is_u64() => {
+                        KvValue::Text(Secret::new(number.to_string()))
+                    }
+                    Raw::Number(_) => KvValue::Unsupported,
                     Raw::Other(IgnoredAny) => KvValue::Unsupported,
                 };
                 (key, value)
@@ -104,17 +110,31 @@ mod tests {
     fn scalars_become_text_and_the_rest_is_unsupported() {
         let got = values(
             r#"{"data": {"data": {
-                "url": "postgres://db", "port": 5432, "ratio": 0.5, "debug": true,
+                "url": "postgres://db", "port": 5432, "big": 18446744073709551615,
+                "negative": -1, "debug": true,
                 "nothing": null, "list": [1, 2], "nested": {"a": "b"}
             }, "metadata": {"version": 3}}}"#,
         );
         assert_eq!(got["url"], text("postgres://db"));
         assert_eq!(got["port"], text("5432"));
-        assert_eq!(got["ratio"], text("0.5"));
+        assert_eq!(got["big"], text("18446744073709551615"));
+        assert_eq!(got["negative"], text("-1"));
         assert_eq!(got["debug"], text("true"));
         assert_eq!(got["nothing"], KvValue::Unsupported);
         assert_eq!(got["list"], KvValue::Unsupported);
         assert_eq!(got["nested"], KvValue::Unsupported);
+    }
+
+    /// Each of these would come out of a float as different text from what
+    /// OpenBao stored, so none is mirrored.
+    #[test]
+    fn a_number_with_a_fraction_or_exponent_is_refused_not_rewritten() {
+        let got = values(
+            r#"{"data": {"data": {"a": 1.50, "b": 1e3, "c": 0.5, "d": 18446744073709551616}}}"#,
+        );
+        for key in ["a", "b", "c", "d"] {
+            assert_eq!(got[key], KvValue::Unsupported, "{key}");
+        }
     }
 
     #[test]

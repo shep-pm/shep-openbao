@@ -28,7 +28,8 @@ pub enum Problem {
     /// A key shep refuses as a secret name, so no `{{secret:...}}`
     /// reference could reach it and shep would refuse the whole push.
     BadName { key: String, path: String },
-    /// `null`, an array or an object, which have no environment form.
+    /// `null`, an array, an object or a fractional number: no single
+    /// environment form, or none that keeps what OpenBao stored.
     Unsupported { key: String, path: String },
     /// Longer than shep accepts for one value.
     TooLarge { key: String, path: String },
@@ -60,7 +61,7 @@ impl fmt::Display for Problem {
             ),
             Self::Unsupported { key, path } => write!(
                 f,
-                "key `{}` at {} is null, a list or a table, not a string, number or boolean",
+                "key `{}` at {} is null, a list, a table or a number with a fraction or exponent; store it as a string",
                 clean(key),
                 clean(path)
             ),
