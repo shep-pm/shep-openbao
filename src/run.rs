@@ -8,7 +8,10 @@
 //! round tries again.
 
 use core::fmt;
-use std::{collections::BTreeMap, time::Instant};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    time::Instant,
+};
 
 use crate::{
     bao::{Bao, BaoError},
@@ -95,6 +98,12 @@ pub struct Mirror<S> {
     /// The last set that landed for each environment. What a round compares
     /// against, and what tells a reconfigure which environments to empty.
     pushed: BTreeMap<String, Set>,
+    /// Environments the shepherd may not hold the last set for: one whose
+    /// push failed, or every one after a reconnect. Each is pushed at its
+    /// next successful read whatever `pushed` says, and leaves this set only
+    /// when a push lands. Without it, a forced round that failed would be
+    /// followed by rounds that find the set unchanged and never send it.
+    dirty: BTreeSet<String>,
 }
 
 impl<S: Shepherd> Mirror<S> {
@@ -112,6 +121,7 @@ impl<S: Shepherd> Mirror<S> {
             config,
             token: None,
             pushed: BTreeMap::new(),
+            dirty: BTreeSet::new(),
         })
     }
 
@@ -121,8 +131,9 @@ impl<S: Shepherd> Mirror<S> {
         &self.config
     }
 
-    /// Reads every environment and pushes what changed, or everything when
-    /// `force` is set.
+    /// Reads every environment and pushes what changed. `force` marks every
+    /// environment dirty first, so each is pushed at its next successful
+    /// read, in this round or a later one.
     pub async fn round(&mut self, force: bool) -> Vec<Outcome> {
         let environments: Vec<(String, Environment)> = self
             .config
@@ -130,6 +141,10 @@ impl<S: Shepherd> Mirror<S> {
             .iter()
             .map(|(name, environment)| (name.clone(), environment.clone()))
             .collect();
+        if force {
+            self.dirty
+                .extend(environments.iter().map(|(name, _)| name.clone()));
+        }
         if environments.is_empty() {
             return Vec::new();
         }
@@ -147,7 +162,7 @@ impl<S: Shepherd> Mirror<S> {
         }
         let mut outcomes = Vec::with_capacity(environments.len());
         for (name, environment) in environments {
-            outcomes.push(self.environment(name, &environment, force).await);
+            outcomes.push(self.environment(name, &environment).await);
         }
         outcomes
     }
@@ -198,12 +213,7 @@ impl<S: Shepherd> Mirror<S> {
         Ok(outcomes)
     }
 
-    async fn environment(
-        &mut self,
-        name: String,
-        environment: &Environment,
-        force: bool,
-    ) -> Outcome {
+    async fn environment(&mut self, name: String, environment: &Environment) -> Outcome {
         let set = match self.read(environment).await {
             Ok(set) => set,
             Err(reasons) => {
@@ -213,22 +223,26 @@ impl<S: Shepherd> Mirror<S> {
                 };
             }
         };
-        if !force && self.pushed.get(&name) == Some(&set) {
+        if !self.dirty.contains(&name) && self.pushed.get(&name) == Some(&set) {
             return Outcome::Unchanged { environment: name };
         }
         match self.shepherd.push(&name, &set).await {
             Ok(_) => {
                 let keys = set.keys().cloned().collect();
+                self.dirty.remove(&name);
                 self.pushed.insert(name.clone(), set);
                 Outcome::Pushed {
                     environment: name,
                     keys,
                 }
             }
-            Err(err) => Outcome::Refused {
-                environment: name,
-                error: err.to_string(),
-            },
+            Err(err) => {
+                self.dirty.insert(name.clone());
+                Outcome::Refused {
+                    environment: name,
+                    error: err.to_string(),
+                }
+            }
         }
     }
 

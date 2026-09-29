@@ -287,6 +287,50 @@ async fn a_refused_push_is_tried_again_next_round() {
 }
 
 #[tokio::test]
+async fn a_forced_push_that_failed_is_sent_again_though_the_set_is_unchanged() {
+    let (fake, recorder, mut mirror) = setup(&[("production", &["app"])]).await;
+    fake.kv("secret", "app", r#"{"A": "1"}"#);
+    mirror.round(false).await;
+
+    // A reconnect forces a push, and the new shepherd refuses it.
+    recorder.refuse.set(true);
+    let forced = mirror.round(true).await;
+    assert!(matches!(forced[0], Outcome::Refused { .. }), "{forced:?}");
+
+    recorder.refuse.set(false);
+    let next = mirror.round(false).await;
+    assert!(matches!(next[0], Outcome::Pushed { .. }), "{next:?}");
+    let settled = mirror.round(false).await;
+    assert_eq!(
+        settled,
+        [Outcome::Unchanged {
+            environment: "production".to_string()
+        }]
+    );
+}
+
+#[tokio::test]
+async fn a_forced_round_that_could_not_read_pushes_at_the_next_read() {
+    let (fake, recorder, mut mirror) = setup(&[("production", &["app"])]).await;
+    fake.kv("secret", "app", r#"{"A": "1"}"#);
+    mirror.round(false).await;
+
+    fake.answer(
+        "GET",
+        "/v1/secret/data/app",
+        503,
+        r#"{"errors": ["sealed"]}"#,
+    );
+    let forced = mirror.round(true).await;
+    assert!(matches!(forced[0], Outcome::Skipped { .. }), "{forced:?}");
+
+    fake.kv("secret", "app", r#"{"A": "1"}"#);
+    let next = mirror.round(false).await;
+    assert!(matches!(next[0], Outcome::Pushed { .. }), "{next:?}");
+    assert_eq!(recorder.count(), 2);
+}
+
+#[tokio::test]
 async fn an_environment_that_leaves_the_config_is_emptied_once() {
     let (fake, recorder, mut mirror) =
         setup(&[("production", &["app"]), ("staging", &["app"])]).await;
