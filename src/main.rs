@@ -1,3 +1,3 @@
-//! A secrets dog for shep: reads secrets from OpenBao and hands them to the flock's processes as environment variables.
+//! A provider dog for shep: mirrors secrets from OpenBao into shep's secrets store.
 
 fn main() {}

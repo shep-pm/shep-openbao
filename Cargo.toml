@@ -5,7 +5,7 @@ edition = "2024"
 # shep's MSRV. A dog or client that needs a newer compiler than the shepherd
 # it works with is a bad example.
 rust-version = "1.88"
-description = "A secrets dog for shep: reads secrets from OpenBao and hands them to the flock's processes as environment variables"
+description = "A provider dog for shep: mirrors secrets from OpenBao into shep's secrets store"
 repository = "https://github.com/shep-pm/shep-openbao"
 license = "MIT OR Apache-2.0"
 readme = "README.md"

@@ -1,6 +1,6 @@
 # shep-openbao
 
-A secrets dog for shep: reads secrets from OpenBao and hands them to the flock's processes as environment variables. MIT OR Apache-2.0.
+A provider dog for shep: mirrors secrets from OpenBao into shep's secrets store. MIT OR Apache-2.0.
 
 Pre-MVP: `src/main.rs` is still empty. It is meant to run as an external dog, adopted with `shep adopt` like shep-log-rotate.
 
