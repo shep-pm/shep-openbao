@@ -170,6 +170,26 @@ async fn error_messages_name_the_operation_and_never_the_body() {
 }
 
 #[tokio::test]
+async fn an_answer_over_the_cap_is_refused_unread() {
+    let fake = FakeBao::start().await;
+    let bao = client(&fake, None);
+    let token = logged_in(&fake, &bao).await;
+    let big = format!(r#"{{"A": "{}"}}"#, "x".repeat(MAX_RESPONSE_BYTES));
+    fake.kv("secret", "big", &big);
+
+    let err = bao
+        .read(&token, "secret", "big")
+        .await
+        .expect_err("too large");
+
+    assert!(matches!(err, BaoError::TooLarge(_)), "{err:?}");
+    assert_eq!(
+        err.to_string(),
+        "reading secret/big: OpenBao's answer is over 4 MiB, which this dog does not read"
+    );
+}
+
+#[tokio::test]
 async fn a_refused_connection_is_a_transport_error() {
     let fake = FakeBao::start().await;
     let mut address = fake.address();

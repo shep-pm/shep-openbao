@@ -26,6 +26,11 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// The longest a TCP and TLS connect may take on its own.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// The most of one response body this dog reads. Room for about a thousand
+/// keys at shep's 4096-byte value limit, far past any real KV path, and small
+/// enough that a server answering with something else cannot exhaust memory.
+const MAX_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
+
 /// The header OpenBao reads a token from.
 const TOKEN_HEADER: &str = "X-Vault-Token";
 
@@ -109,6 +114,8 @@ pub enum BaoError {
     Status { op: Operation, status: StatusCode },
     /// A success whose body is not what OpenBao's API documents.
     Decode(Operation),
+    /// A success whose body is over [`MAX_RESPONSE_BYTES`].
+    TooLarge(Operation),
 }
 
 impl fmt::Display for BaoError {
@@ -126,6 +133,11 @@ impl fmt::Display for BaoError {
             Self::Decode(op) => write!(
                 f,
                 "{op}: OpenBao's answer is not the shape its API documents"
+            ),
+            Self::TooLarge(op) => write!(
+                f,
+                "{op}: OpenBao's answer is over {} MiB, which this dog does not read",
+                MAX_RESPONSE_BYTES / (1024 * 1024)
             ),
         }
     }
@@ -280,8 +292,25 @@ impl Bao {
                 status,
             });
         }
-        let bytes = response.bytes().await.map_err(transport)?;
-        Ok(bytes.to_vec())
+        // Read in chunks against the cap rather than with `bytes()`, which
+        // would buffer whatever arrived. A declared length over the cap is
+        // refused before anything is read.
+        let too_large = || BaoError::TooLarge(op.clone());
+        if response
+            .content_length()
+            .is_some_and(|length| length > MAX_RESPONSE_BYTES as u64)
+        {
+            return Err(too_large());
+        }
+        let mut response = response;
+        let mut body = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(transport)? {
+            if body.len() + chunk.len() > MAX_RESPONSE_BYTES {
+                return Err(too_large());
+            }
+            body.extend_from_slice(&chunk);
+        }
+        Ok(body)
     }
 }
 
