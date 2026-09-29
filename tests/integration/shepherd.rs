@@ -109,8 +109,16 @@ impl Shepherd {
 }
 
 impl Drop for Shepherd {
+    /// Kills the daemon before the temporary home goes. Built without
+    /// `run`, whose `expect` would panic here if `shep` could not be
+    /// spawned: a panic inside `drop` while a failing test is already
+    /// unwinding aborts the whole binary and hides that test's own failure.
     fn drop(&mut self) {
-        let _ = self.run(&["kill", "--style", "bare"]);
+        let _ = Command::new(&self.shep)
+            .args(["kill", "--style", "bare", "--home"])
+            .arg(self.home())
+            .env("SHEP_HOME", self.home())
+            .output();
     }
 }
 
