@@ -33,7 +33,7 @@ An isolated tenant inside one OpenBao server, with its own mounts and policies.
 _Avoid_: bare "namespace", which always means shep's
 
 **KV path**:
-A location in an OpenBao KV v2 mount, holding a map of keys to values. Each key at a mirrored KV path becomes one secret.
+A location in an OpenBao KV v2 mount, holding a map of keys to values. Each key at a mirrored KV path maps to one secret of the same name.
 _Avoid_: calling the path itself a secret, as OpenBao's own docs do
 
 **Mirror**:
