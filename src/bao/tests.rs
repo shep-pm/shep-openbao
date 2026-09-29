@@ -264,23 +264,31 @@ fn a_lifetime_too_large_to_double_does_not_panic() {
 }
 
 #[test]
-fn a_missing_or_empty_ca_cert_is_refused_by_path() {
+fn a_missing_empty_or_unparseable_ca_cert_is_refused_by_path() {
     let url = Url::parse("https://openbao.example.com").expect("a URL");
-    let dir = std::env::temp_dir().join(format!("shep-openbao-ca-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("a temp dir");
-    let empty = dir.join("empty.pem");
-    std::fs::write(&empty, "not a certificate").expect("written");
+    // Owned by `TempDir`, so a failed or concurrent run cleans up after
+    // itself and never shares the fixtures.
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let empty = dir.path().join("empty.pem");
+    std::fs::write(&empty, "").expect("written");
+    let garbage = dir.path().join("garbage.pem");
+    std::fs::write(&garbage, "not a certificate").expect("written");
 
-    let missing = Bao::new(url.clone(), Some(&dir.join("nope.pem")), None).expect_err("missing");
-    let unusable = Bao::new(url, Some(&empty), None).expect_err("not PEM");
+    let missing =
+        Bao::new(url.clone(), Some(&dir.path().join("nope.pem")), None).expect_err("missing");
+    let zero_bytes = Bao::new(url.clone(), Some(&empty), None).expect_err("empty");
+    let unparseable = Bao::new(url, Some(&garbage), None).expect_err("not PEM");
 
     assert!(
         matches!(missing, BaoError::CaCertRead { .. }),
         "{missing:?}"
     );
     assert!(
-        matches!(unusable, BaoError::CaCertParse { .. }),
-        "{unusable:?}"
+        matches!(zero_bytes, BaoError::CaCertParse { .. }),
+        "{zero_bytes:?}"
     );
-    let _ = std::fs::remove_dir_all(&dir);
+    assert!(
+        matches!(unparseable, BaoError::CaCertParse { .. }),
+        "{unparseable:?}"
+    );
 }
