@@ -33,6 +33,7 @@ The dog only logs in and reads. A policy reaching the paths it mirrors, and an A
 bao auth enable approle
 bao policy write shep-openbao - <<'EOF'
 path "secret/data/myapp/*" { capabilities = ["read"] }
+path "secret/data/shared/*" { capabilities = ["read"] }
 EOF
 bao write auth/approle/role/shep-openbao token_policies=shep-openbao token_ttl=1h secret_id_num_uses=0
 bao read -field=role_id auth/approle/role/shep-openbao/role-id
