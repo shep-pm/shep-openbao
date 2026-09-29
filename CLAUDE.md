@@ -7,7 +7,7 @@ An external dog: an operator adopts it with `shep adopt shep-openbao`, and it pu
 ## Commands
 
 - `cargo test --locked` is the test shape: the unit tier plus `tests/probe.rs`, which spawns the binary the way `shep adopt` does.
-- The integration tier needs a real shepherd and a real OpenBao: `bao server -dev -dev-root-token-id=root -dev-listen-address=127.0.0.1:18200 &`, then `SHEP_BIN=<built shep> BAO_ADDR=http://127.0.0.1:18200 cargo test --features integration --test integration`. Port 18200 keeps clear of a real OpenBao on 8200. Each test works under its own KV prefix and AppRole, so one dev server serves the whole tier.
+- The integration tier needs a real shepherd and a real OpenBao: `bao server -dev -dev-root-token-id=root -dev-listen-address=127.0.0.1:18200 &`, then `SHEP_BIN=<built shep> BAO_ADDR=http://127.0.0.1:18200 cargo test --features integration --locked --test integration`, the same command CI runs. Port 18200 keeps clear of a real OpenBao on 8200. Each test works under its own KV prefix and AppRole, so one dev server serves the whole tier.
 - CI's gates, all required: `cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features --locked -- -D warnings`, `RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --all-features --locked`, and `cargo +1.88 check --all-targets --all-features --locked` for the MSRV.
 - One cargo command at a time: they share the target-dir lock.
 - `rust-toolchain.toml` floats on stable, like CI. When CI's clippy flags something a local run did not, `rustup update stable` first.

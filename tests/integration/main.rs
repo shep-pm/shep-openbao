@@ -14,7 +14,7 @@
 //! ```text
 //! bao server -dev -dev-root-token-id=root -dev-listen-address=127.0.0.1:18200 &
 //! SHEP_BIN=../shep/target/debug/shep BAO_ADDR=http://127.0.0.1:18200 \
-//!     cargo test --features integration
+//!     cargo test --features integration --locked --test integration
 //! ```
 //!
 //! # $SHEP_HOME is a temporary directory in every test, and that is load-bearing
