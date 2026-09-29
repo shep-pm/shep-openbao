@@ -211,10 +211,13 @@ async fn an_answer_over_the_cap_is_refused_unread() {
 
 #[tokio::test]
 async fn a_refused_connection_is_a_transport_error() {
-    let fake = FakeBao::start().await;
-    let mut address = fake.address();
-    // Port 9 (discard) on loopback: nothing listens there in a test run.
-    address.set_port(Some(9)).expect("a port");
+    // A port the OS just handed out and this test just closed: nothing is
+    // listening there, unlike a fixed port some service might hold.
+    let closed = std::net::TcpListener::bind("127.0.0.1:0")
+        .and_then(|listener| listener.local_addr())
+        .expect("a loopback port")
+        .port();
+    let address = Url::parse(&format!("http://127.0.0.1:{closed}")).expect("a URL");
     let bao = Bao::new(address, None, None).expect("a client");
     let err = bao
         .login("role", &secret("hunter2"))
