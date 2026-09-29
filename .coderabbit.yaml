@@ -36,8 +36,9 @@ reviews:
         `unsafe_code` is forbidden crate-wide in Cargo.toml.
         Do not suggest widening an input grammar past what the code refuses. A
         refusal here is usually deliberate and says so in its own error.
-    # Narrow this to the modules that hold the token and spawn the environment
-    # once they exist, as shep-log-rotate does for src/prune.rs.
+    # All of src/ rather than one file, as shep-log-rotate's src/prune.rs
+    # entry is: every module here holds the token, the secret ID or a
+    # mirrored value at some point.
     - path: "src/**/*.rs"
       instructions: >-
         This crate holds an OpenBao token and the secret values it reads, which
