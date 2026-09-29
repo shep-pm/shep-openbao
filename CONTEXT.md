@@ -1,6 +1,6 @@
 # shep-openbao
 
-A provider dog for shep that mirrors secrets out of OpenBao into shep's secrets store, where sheep read them as environment variables. shep's own vocabulary (sheep, flock, shepherd, dog) holds here unchanged, as defined in shep's `docs/terminology.md`.
+A provider dog for shep that mirrors secrets out of OpenBao into shep's secrets store, where a sheep reads them as environment variables. shep's own vocabulary (sheep, flock, shepherd, dog) holds here unchanged, as defined in shep's `docs/terminology.md`.
 
 ## Language
 
