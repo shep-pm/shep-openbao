@@ -11,6 +11,11 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 publish = false
 
+[features]
+# The tier that drives a real shepherd and a real OpenBao. Off by default
+# because a fresh clone has neither.
+integration = []
+
 [dependencies]
 # The only path to shep-core: `shep_client::shep_core`, never a second direct
 # dependency. 0.11.0 is the floor because it is the release carrying the
@@ -32,6 +37,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 
 [dev-dependencies]
 shep-client = { version = "0.11.0", features = ["test-support"] }
+tempfile = "3"
 tokio = { version = "1", default-features = false, features = ["rt", "macros", "time", "net", "io-util", "sync"] }
 
 [lints.rust]
@@ -41,6 +47,10 @@ unsafe_code = "forbid"
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }
+
+[[test]]
+name = "integration"
+required-features = ["integration"]
 
 # Debug info dominates a debug build, and a dependency's is never what is
 # being debugged.
