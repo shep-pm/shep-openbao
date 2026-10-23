@@ -9,7 +9,10 @@ description = "A provider dog for shep: mirrors secrets from OpenBao into shep's
 repository = "https://github.com/shep-pm/shep-openbao"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-publish = false
+keywords = ["shep"]
+# docs/ holds planning and design notes. They belong in the repository, not in
+# a published .crate, which is permanent.
+exclude = ["/docs/"]
 
 [features]
 # The tier that drives a real shepherd and a real OpenBao. Off by default
