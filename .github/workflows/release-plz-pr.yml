@@ -92,7 +92,12 @@ jobs:
             echo "::error::could not read Cargo.toml at $base_sha or $head_sha. Re-run the job."
             exit 1
           fi
-          if [ "$base_version" = "$head_version" ]; then
+          # A crate's first release keeps the version already in Cargo.toml and
+          # only adds the changelog, so no tag yet means an unchanged version
+          # is expected. Every later release has a tag and must bump.
+          first_release=false
+          [ -z "$(git tag --list 'v[0-9]*')" ] && first_release=true
+          if [ "$first_release" = false ] && [ "$base_version" = "$head_version" ]; then
             echo "::error::release PR #$PR_NUMBER changes no version in Cargo.toml, so it will not be auto-merged."
             echo "::error::Merge it by hand if the changelog entry is wanted, close it if this is a loop."
             exit 1
