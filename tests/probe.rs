@@ -68,9 +68,9 @@ fn the_protocol_this_dog_announces_is_one_a_shepherd_still_accepts() {
     // prompt to run the integration tier against a shepherd from the new
     // release before moving the number.
     assert_eq!(
-        announced, 10,
+        announced, 11,
         "this dog announces protocol {announced}, and was last verified against a shepherd \
-         speaking 10. Run the integration tier against the new shep before moving this."
+         speaking 11. Run the integration tier against the new shep before moving this."
     );
 }
 
