@@ -17,7 +17,7 @@ cargo install --git https://github.com/shep-pm/shep-openbao
 shep adopt shep-openbao
 ```
 
-`adopt` names the dog `openbao`, which is also the namespace a sheep reads from and the section of `dogs.toml` the dog reads. Add it to `boot_first_dogs` so it starts before the flock:
+`adopt` names the dog `openbao`, which is also the namespace a sheep reads from and the section of `dogs.toml` the dog reads. It asks before granting the one permission the dog declares, `secrets.write:openbao` (`secrets.write:<name>` under `--name`), which is what lets the shepherd accept its pushes. Pass `--yes` where there is no terminal to ask on. Add it to `boot_first_dogs` so it starts before the flock:
 
 ```toml
 # $SHEP_HOME/shep.toml

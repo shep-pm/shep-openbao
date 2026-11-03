@@ -20,7 +20,7 @@ mod shepherd;
 use std::process::ExitCode;
 
 use shep_client::{
-    dogs::{self, DogAction, DogIdentity, DogRuntime, Stop},
+    dogs::{self, DogAction, DogIdentity, DogRuntime, Permission, Probe, Stop},
     shep_core::exit,
 };
 
@@ -31,7 +31,17 @@ const DEFAULT_NAME: &str = "openbao";
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
-    dogs::probe::<config::Section>(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+    let identity = DogIdentity::from_env(&|key| std::env::var(key).ok(), DEFAULT_NAME);
+    // A shepherd refuses a push outside what adopt granted, and adopt grants
+    // only what this manifest declares. `shep adopt --name` vets the dog
+    // under its new name, so the declared namespace is the one it will push to.
+    Probe::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+        .permission(Permission::new(
+            format!("secrets.write:{}", identity.section()),
+            true,
+            "pushes the secrets it mirrors from OpenBao into its own namespace",
+        ))
+        .answer::<config::Section>();
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     match dogs::parse_args(env!("CARGO_PKG_NAME"), args.iter().map(String::as_str)) {
@@ -54,7 +64,6 @@ async fn main() -> ExitCode {
             return err.exit_code().into();
         }
     };
-    let identity = DogIdentity::from_env(&|key| std::env::var(key).ok(), DEFAULT_NAME);
     let runtime = match DogRuntime::start(identity, paths).await {
         Ok(runtime) => runtime,
         Err(err) => {
