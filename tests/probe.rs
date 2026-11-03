@@ -27,6 +27,33 @@ fn probe(flag: &str) -> Output {
         .expect("the dog binary ran")
 }
 
+/// [`probe`] under the name `shep adopt --name` hands the dog while it vets it.
+fn probe_named(flag: &str, name: &str) -> Output {
+    Command::new(DOG_BIN)
+        .arg(flag)
+        .env_remove("SHEP_HOME")
+        .env("SHEP_DOG_NAME", name)
+        .output()
+        .expect("the dog binary ran")
+}
+
+/// The permission names a manifest answer declares.
+fn declared_permissions(output: &Output) -> Vec<String> {
+    answered_cleanly(output, "--shep-manifest");
+    let manifest: serde_json::Value =
+        serde_json::from_str(&stdout(output)).expect("the manifest is JSON");
+    manifest["permissions"]
+        .as_array()
+        .expect("a permissions list")
+        .iter()
+        .map(|permission| {
+            let name = permission["name"].as_str().expect("a permission name");
+            assert_eq!(permission["required"], true, "{name} must be required");
+            name.to_string()
+        })
+        .collect()
+}
+
 fn stdout(output: &Output) -> String {
     String::from_utf8(output.stdout.clone()).expect("stdout is UTF-8")
 }
@@ -68,9 +95,9 @@ fn the_protocol_this_dog_announces_is_one_a_shepherd_still_accepts() {
     // prompt to run the integration tier against a shepherd from the new
     // release before moving the number.
     assert_eq!(
-        announced, 11,
+        announced, 15,
         "this dog announces protocol {announced}, and was last verified against a shepherd \
-         speaking 11. Run the integration tier against the new shep before moving this."
+         speaking 15. Run the integration tier against the new shep before moving this."
     );
 }
 
@@ -124,5 +151,23 @@ fn a_flag_this_binary_has_never_had_is_still_refused() {
         String::from_utf8_lossy(&output.stderr).contains("--push-now"),
         "the refusal names the flag: {}",
         String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn the_manifest_asks_to_write_the_namespace_the_dog_was_named() {
+    // The shepherd refuses a dog's `PutSecrets` outside what adopt granted,
+    // and grants only what this answer declares.
+    assert_eq!(
+        declared_permissions(&probe_named("--shep-manifest", "vault")),
+        ["secrets.write:vault"]
+    );
+}
+
+#[test]
+fn the_manifest_asks_for_the_default_namespace_when_no_name_was_given() {
+    assert_eq!(
+        declared_permissions(&probe("--shep-manifest")),
+        ["secrets.write:openbao"]
     );
 }

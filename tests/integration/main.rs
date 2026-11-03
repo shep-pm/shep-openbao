@@ -278,9 +278,9 @@ fn an_adopted_dog_pushes_under_the_name_it_was_adopted_as() {
     let world = World::new("postgres://adopted");
     world.shepherd.write_dogs_toml(&world.section("vault", ""));
     world.shepherd.ok(&["start", "--style", "bare"]);
-    world
-        .shepherd
-        .ok(&["adopt", DOG_BIN, "--name", "vault", "--style", "bare"]);
+    world.shepherd.ok(&[
+        "adopt", DOG_BIN, "--name", "vault", "--yes", "--style", "bare",
+    ]);
 
     // Waiting on the sheep rather than on the dog's own output, which an
     // adopted dog writes to the shepherd's logs: the sheep reading the value
