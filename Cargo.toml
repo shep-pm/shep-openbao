@@ -24,7 +24,7 @@ integration = []
 # dependency. 0.23.0 is the release this dog was last built and verified
 # against; the shared dog infrastructure (Stop, DogRuntime, the startup
 # prelude and the exit codes) arrived in 0.11.0 and `PutSecrets` in 0.6.2.
-shep-client = "0.23.0"
+shep-client = "0.24.2"
 # `#[derive(JsonSchema)]` expands to absolute `schemars::` paths, so the crate
 # has to be nameable here even though shep-client carries it.
 schemars = { version = "1.2.2", default-features = false, features = ["derive", "std"] }
@@ -39,7 +39,7 @@ reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 
 [dev-dependencies]
-shep-client = { version = "0.23.0", features = ["test-support"] }
+shep-client = { version = "0.24.2", features = ["test-support"] }
 tempfile = "3"
 tokio = { version = "1", default-features = false, features = ["rt", "macros", "time", "net", "io-util", "sync"] }
 

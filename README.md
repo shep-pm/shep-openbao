@@ -13,7 +13,7 @@ The shepherd resolves the reference when it spawns the sheep. A sheep started be
 ## Install
 
 ```sh
-cargo install --git https://github.com/shep-pm/shep-openbao
+cargo install shep-openbao --locked
 shep adopt shep-openbao
 ```
 

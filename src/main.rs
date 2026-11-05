@@ -20,7 +20,7 @@ mod shepherd;
 use std::process::ExitCode;
 
 use shep_client::{
-    dogs::{self, DogAction, DogIdentity, DogRuntime, Permission, Probe, Stop},
+    dogs::{self, DogAction, DogIdentity, DogRuntime, Permission, Probe, Stop, Verb},
     shep_core::exit,
 };
 
@@ -36,6 +36,10 @@ async fn main() -> ExitCode {
     // only what this manifest declares. `shep adopt --name` vets the dog
     // under its new name, so the declared namespace is the one it will push to.
     Probe::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+        .verb(
+            Verb::new("Mirror secrets from OpenBao into shep's store")
+                .with_examples(["shep openbao --print-config"]),
+        )
         .permission(Permission::new(
             format!("secrets.write:{}", identity.section()),
             true,
