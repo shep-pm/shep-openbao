@@ -56,7 +56,7 @@ secret_id = "..."
 paths = ["myapp/production", "shared/production"]
 ```
 
-| key | default | |
+| key | default | meaning |
 |---|---|---|
 | `address` | required | `https` anywhere, or `http` to a loopback address only |
 | `ca_cert` | none | a PEM file to trust beside the system's own roots |
