@@ -8,7 +8,8 @@ An external dog: an operator adopts it with `shep adopt shep-openbao`, and it pu
 
 - `cargo test --locked` is the test shape: the unit tier plus `tests/probe.rs`, which spawns the binary the way `shep adopt` does.
 - The integration tier needs a real shepherd and a real OpenBao: `bao server -dev -dev-root-token-id=root -dev-listen-address=127.0.0.1:18200 &`, then `SHEP_BIN=<built shep> BAO_ADDR=http://127.0.0.1:18200 cargo test --features integration --locked --test integration`, the same command CI runs. Port 18200 keeps clear of a real OpenBao on 8200. Each test works under its own KV prefix and AppRole, so one dev server serves the whole tier.
-- CI's gates, all required: `cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features --locked -- -D warnings`, `RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --all-features --locked`, and `cargo +1.88 check --all-targets --all-features --locked` for the MSRV.
+- CI's gates, all required: `cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features --locked -- -D warnings`, `RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --all-features --locked`, `cargo +1.88 check --all-targets --all-features --locked` for the MSRV, and the integration tier above, which CI runs against a shepherd and an OpenBao it fetches itself. Both OpenBao fetches retry: GitHub's release asset host answers 504 often enough to end a run on its own.
+- The integration gate is pinned per event: a pull request builds the shep release `Cargo.toml` pins (`SHEP_PIN` in `.github/workflows/test.yml`), and shep's `main` tip is built on `main` pushes, on the weekly schedule and on a dispatch. `docs/adr/0002-integration-tier-pins-shep.md` is why.
 - One cargo command at a time: they share the target-dir lock.
 - `rust-toolchain.toml` floats on stable, like CI. When CI's clippy flags something a local run did not, `rustup update stable` first.
 
