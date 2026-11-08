@@ -5,6 +5,13 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Weekly, and always against `main`. This trigger exists for one reason: it
+  # is where the dog builds shep's `main` tip now that a pull request does not.
+  # See docs/adr/0002-integration-tier-pins-shep.md.
+  schedule:
+    # Monday 03:17 UTC. Off the top of the hour, when the shared runner pool is
+    # busiest.
+    - cron: '17 3 * * 1'
   workflow_dispatch:
 permissions:
   contents: read
@@ -56,23 +63,46 @@ jobs:
     # job that tests what this dog is for: a sheep reading a value back out
     # of its own environment. Feature-gated off by default because a fresh
     # clone has neither; here we fetch both.
+    #
+    # Which shep gets built is what decides whether this gate can be trusted.
+    # It used to build shep's `main` tip on every run, which let a red run
+    # close a pull request that changed nothing the tier touches. A pull
+    # request builds the pinned release below; a `main` push, the weekly
+    # schedule and a dispatch build shep's tip. The decision and why it
+    # reversed: docs/adr/0002-integration-tier-pins-shep.md.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       BAO_VERSION: 2.7.0
       BAO_ADDR: http://127.0.0.1:18200
+      # The shep a pull request builds: the tag of the `shep` package released
+      # beside the `shep-client` version Cargo.toml pins, so the dog and the
+      # shepherd it talks to are the release this crate ships against. Move
+      # this line with that dependency, and nowhere else.
+      SHEP_PIN: shep-v0.24.2
     steps:
       - uses: actions/checkout@v7
       - run: rustup toolchain install stable --profile minimal
-      # From shep's `main` rather than the release this crate's lockfile
-      # pins, deliberately: the point of an external dog's integration tier
-      # is to notice shep's surface moving under it. `--debug` because the
-      # tier needs a working shepherd, not a fast one, and a release build
-      # with shep's LTO settings takes several times as long. The bare `shep`
-      # is the package spec, which `cargo install --git` needs now that
-      # shep's workspace has more than one package with a binary.
+      # `--debug` because the tier needs a working shepherd, not a fast one,
+      # and a release build with shep's LTO settings takes several times as
+      # long. The bare `shep` is the package spec, which `cargo install --git`
+      # needs now that shep's workspace has more than one package with a
+      # binary.
       - name: Build a real shep
-        run: cargo install --debug --git https://github.com/shep-pm/shep --branch main shep --bin shep --locked
+        run: |
+          set -eu
+          # A gate has to say something about the pull request it gates. shep's
+          # `main` tip says something about shep, so the tip is what a `main`
+          # push and the weekly run build, and never a pull request's run.
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            echo "Building the pinned shep release: $SHEP_PIN"
+            cargo install --debug --git https://github.com/shep-pm/shep \
+              --tag "$SHEP_PIN" shep --bin shep --locked
+          else
+            echo "Building shep's main tip"
+            cargo install --debug --git https://github.com/shep-pm/shep \
+              --branch main shep --bin shep --locked
+          fi
       # The release binary rather than a container: it runs the same way on
       # a laptop with no Docker, and the checksum is checked against the
       # release's own list before anything runs.
