@@ -12,7 +12,7 @@ The `integration` job built shep from the tip of shep's `main` on every run, pul
 ## Consequences
 
 - The pinned pair is the pair that ships. The dog compiles against `shep-client` 0.24.2 and now runs against the shepherd released beside it, which is what the tier is really checking: wire compatibility between the two. Against shep's tip it tested a pair that never ships together.
-- The tier's other input was already deterministic. OpenBao is pinned by version, and its tarball is checked against the release's own checksums before anything runs. shep was the one unpinned input.
+- The tier's other input is pinned but not dependable. OpenBao is pinned by version and its tarball is checked against the release's own checksums before anything runs, yet both files come off GitHub's release asset host, whose gateway answers 504 often enough to end a run on its own: that is what failed this pull request's `integration` job twice. Both fetches now retry, with the wait capped at five minutes each. A pinned input that has to cross a flaky gateway is still a flaky gate.
 - `SHEP_PIN` and the `shep-client` dependency have to move together, and nothing checks that they do. Whoever bumps the dependency bumps the pin.
 - shep's `main` tip is watched on a slower clock: a break shows up at the next push to `main`, or at the weekly run, at most a week later. A red weekly run belongs to no pull request. Whoever reads it decides whether to move the pin or file against shep.
 - The weekly schedule triggers the whole `test` workflow, so every gate re-runs weekly. That re-checks the four toolchain gates against whatever `stable` has become in the meantime.

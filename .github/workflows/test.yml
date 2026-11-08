@@ -106,12 +106,24 @@ jobs:
       # The release binary rather than a container: it runs the same way on
       # a laptop with no Docker, and the checksum is checked against the
       # release's own list before anything runs.
+      #
+      # GitHub's release asset host answers 504 now and then: the gateway in
+      # front of the blob store gives up on a fetch. One attempt per file makes
+      # this step a coin flip, so each fetch retries. curl calls 408, 429, 500,
+      # 502, 503, 504 and timeouts transient and retries them with a doubling
+      # wait of its own; --retry-all-errors covers the shapes a flaky gateway
+      # produces that curl cannot classify. --retry-max-time caps the whole wait
+      # at five minutes, so a host that stays down fails the job with a legible
+      # log instead of eating its 30.
       - name: Start an OpenBao dev server
         run: |
+          set -eu
           base="https://github.com/openbao/openbao/releases/download/v${BAO_VERSION}"
           tarball="openbao_${BAO_VERSION}_linux_amd64.tar.gz"
-          curl -fsSLO "$base/$tarball"
-          curl -fsSLO "$base/checksums.txt"
+          curl -fsSLO --connect-timeout 20 --max-time 600 --retry 8 \
+            --retry-max-time 300 --retry-all-errors "$base/$tarball"
+          curl -fsSLO --connect-timeout 20 --max-time 600 --retry 8 \
+            --retry-max-time 300 --retry-all-errors "$base/checksums.txt"
           grep " ${tarball}\$" checksums.txt | sha256sum -c -
           tar -xzf "$tarball" bao
           ./bao server -dev -dev-root-token-id=root -dev-listen-address=127.0.0.1:18200 > bao.log 2>&1 &
