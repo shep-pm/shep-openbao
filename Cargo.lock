@@ -1374,7 +1374,7 @@ dependencies = [
 
 [[package]]
 name = "shep-openbao"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "reqwest",
  "rustls",
